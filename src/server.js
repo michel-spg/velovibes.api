@@ -7,11 +7,11 @@ app.get("/", (req, res) => {
   res.send("Welcome to VeloVibes!");
 });
 
-app.get("/bikes", (req, res) => {
+app.get("/api/bikes", (req, res) => {
   res.json(bikes);
 });
 
-app.get("/bikes/:bikeId", (req, res) => {
+app.get("/api/bikes/:bikeId", (req, res) => {
     const bikeId = req.params.bikeId;
     const bike = bikes.find(bike => bike.id == bikeId);
     if (!bike) {
