@@ -1,11 +1,16 @@
 const express = require("express");
-const bikes = require("./bikes");
 const mysql = require("mysql2/promise");
 const path = require("path");
+const cors = require("cors");
+const fs = require("fs");
+const multer = require("multer");
 const app = express();
 const port = 3000;
 
 app.use("/images", express.static(path.join(__dirname, "../assets")));
+app.use(cors());
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const db = mysql.createPool({
   host: "localhost",
@@ -115,6 +120,118 @@ app.get("/api/bikes/:id", async (req, res) => {
   } catch (error) {
     console.error("Fehler beim Abrufen des Fahrrads:", error);
     res.status(500).json({ error: "Fehler beim Abrufen des Fahrrads" });
+  }
+});
+
+app.post("/api/bikes", upload.single("image"), async (req, res) => {
+  const connection = await db.getConnection();
+  const buffer = req.file?.buffer; // Bilddaten im Speicher
+  const finalPath = req.file
+    ? path.join(
+        __dirname,
+        "../assets",
+        `${Date.now()}-${req.file.originalname}`
+      )
+    : null;
+
+  try {
+    const {
+      brand,
+      model,
+      category,
+      color,
+      price,
+      size,
+      description,
+      equipment,
+    } = req.body;
+
+    if (
+      !brand ||
+      !model ||
+      !category ||
+      !color ||
+      !price ||
+      !size ||
+      !description ||
+      !equipment
+    ) {
+      return res.status(400).json({
+        error: "Alle Felder sind erforderlich, einschließlich Equipment",
+      });
+    }
+
+    console.log(req.body);
+    const equipmentArray = Array.isArray(equipment) ? equipment : [equipment];
+
+    if (!req.file) {
+      return res.status(400).json({ error: "Bild nicht vorhanden!" });
+    }
+
+    await connection.beginTransaction();
+
+    // Fahrrad in die Datenbank einfügen
+    const [result] = await connection.query(
+      `
+        INSERT INTO bikes (brand, model, category, color, price, size, imageUrl, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        brand,
+        model,
+        category,
+        color,
+        price,
+        size,
+        `/images/${path.basename(finalPath)}`,
+        description,
+      ]
+    );
+
+    const bikeId = Number(result.insertId);
+
+    // Equipment in die bike_equipment-Tabelle einfügen
+    const equipmentInsertPromises = equipmentArray.map((item) =>
+      connection.query(
+        `
+          INSERT INTO bike_equipment (bike_id, equipment)
+          VALUES (?, ?)
+        `,
+        [bikeId, item]
+      )
+    );
+
+    await Promise.all(equipmentInsertPromises);
+
+    // Transaktion erfolgreich abschließen
+    await connection.commit();
+
+    // Speichere das Bild aus dem Buffer im finalen Speicherort
+    fs.writeFile(finalPath, buffer, (err) => {
+      if (err) {
+        console.error("Fehler beim Speichern des Bildes:", err);
+        throw new Error("Bild konnte nicht gespeichert werden");
+      }
+    });
+
+    res.status(201).json({
+      message: "Fahrrad erfolgreich hinzugefügt",
+      bikeId,
+    });
+  } catch (error) {
+    console.error("Fehler beim Hinzufügen des Fahrrads:", error);
+
+    // Lösche das Bild, falls es versehentlich geschrieben wurde
+    if (finalPath && fs.existsSync(finalPath)) {
+      fs.unlink(finalPath, (err) => {
+        if (err) console.error("Fehler beim Löschen des Bildes:", err);
+      });
+    }
+
+    await connection.rollback();
+    res.status(500).json({ error: "Fehler beim Hinzufügen des Fahrrads" });
+  } finally {
+    connection.release();
   }
 });
 
