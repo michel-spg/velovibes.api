@@ -235,6 +235,50 @@ app.post("/api/bikes", upload.single("image"), async (req, res) => {
   }
 });
 
+app.delete("/api/bikes/:id", async (req, res) => {
+  const bikeId = req.params.id;
+
+  try {
+    const [bikes] = await db.query(
+      `
+          SELECT imageUrl
+          FROM bikes
+          WHERE id = ?
+      `,
+      [bikeId]
+    );
+
+    if (bikes.length === 0) {
+      return res.status(404).json({ error: "Bike not found" });
+    }
+
+    const imageUrl = bikes[0].imageUrl;
+
+    await db.query(
+      `
+          DELETE FROM bikes
+          WHERE id = ?
+      `,
+      [bikeId]
+    );
+
+    if (imageUrl) {
+      const imagePath = path.join(__dirname, "../assets", path.basename(imageUrl));
+
+      fs.unlink(imagePath, (err) => {
+        if (err) {
+          console.error("Fehler beim Löschen des Bildes:", err);
+        }
+      });
+    }
+
+    res.json({ message: "Fahrrad erfolgreich gelöscht" });
+  } catch (error) {
+    console.error("Fehler beim Löschen des Fahrrads:", error);
+    res.status(500).json({ error: "Fehler beim Löschen des Fahrrads" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
 });
