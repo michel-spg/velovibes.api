@@ -4,8 +4,15 @@ const path = require("path");
 const cors = require("cors");
 const fs = require("fs");
 const multer = require("multer");
+const admin = require("firebase-admin");
 const app = express();
 const port = 3000;
+
+// Initialize Firebase Admin
+const serviceAccount = require("../config/fbServiceAccountKey.json");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
 
 app.use("/images", express.static(path.join(__dirname, "../assets")));
 app.use(cors());
@@ -18,6 +25,30 @@ const db = mysql.createPool({
   password: "",
   database: "velovibes_db",
 });
+
+// Authentication middleware
+const checkAuth = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+
+  const token = authHeader.split('Bearer ')[1];
+  
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    req.user = decodedToken;
+    console.log(req.user);
+    console.log("req.user: " + req.user);
+    next();
+  } catch (error) {
+    console.error('Error verifying token:', error);
+    return res.status(403).json({ error: 'Invalid token' });
+  }
+};
+
+app.use('/', checkAuth)
 
 app.get("/api/bikes", async (req, res) => {
   try {
