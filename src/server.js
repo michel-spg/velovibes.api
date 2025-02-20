@@ -48,7 +48,36 @@ const checkAuth = async (req, res, next) => {
   }
 };
 
-app.use('/', checkAuth)
+app.use('/api/', checkAuth)
+
+// set custom claim/role for user
+app.put('/admin-api/user/:fbuid/claim', async (req, res) => {
+  const uid  = req.params.fbuid;
+  const roleKey = req.query.roleKey;
+  const roleValue = req.query.roleValue;
+  console.log("Set customClaim/role of user " + uid + " to (roleKey: " + roleKey + ", roleValue: " + roleValue + ")");
+  try {
+    const customClaims = {};
+    customClaims[roleKey] = roleValue;
+    await admin.auth().setCustomUserClaims(uid, customClaims);
+    res.json({ message: 'Custom claim set' });
+  } catch (error) {
+    console.error('Error setting custom claim:', error);
+    res.status(500).json({ error: 'Error setting custom claim' });
+  }
+});
+
+// get full user from firebase auth
+app.get('/admin-api/user/:uid', async (req, res) => {
+  const { uid } = req.params;
+  try {
+    const user = await admin.auth().getUser(uid);
+    res.json(user);
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    res.status(500).json({ error: 'Error fetching user data' });
+  }
+});
 
 app.get("/api/bikes", async (req, res) => {
   try {
